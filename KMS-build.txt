@@ -1,0 +1,281 @@
+# KMS源码目录
+KMS_HOME=$HOME/kms_source
+# KMS编译目录
+KMS_BUILD_HOME=$KMS_HOME/build/kms
+
+CMAKE_MODULES_PATH=${KMS_BUILD_HOME}/share/cmake-3.5/Modules
+
+# 导入编译所需的环境变量
+export CMAKE_OPTS="-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULES_PATH} -DKURENTO_MODULES_DIR:STRING=${KMS_BUILD_HOME}/share/kurento/modules"
+export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:$KMS_BUILD_HOME/lib/pkgconfig
+export LIBRARY_PATH=$LIBRARY_PATH:$KMS_BUILD_HOME/lib
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$KMS_BUILD_HOME/lib
+export CPATH=$CPATH:$KMS_BUILD_HOME/include:$KMS_BUILD_HOME/include/gstreamer-1.5
+export PATH=$PATH:$KMS_BUILD_HOME/bin
+JAVA_CMD=$(which java)
+
+# 创建所需目录
+mkdir -p ${KMS_HOME}
+mkdir -p ${KMS_BUILD_HOME}
+mkdir -p ${KMS_BUILD_HOME}/bin
+
+# ---- build externals ----
+# gstreamer
+
+sudo apt install git autoconf autopoint libtool bison flex gtk-doc-tools
+sudo apt install libglib2.0-dev freeglut3 freeglut3-dev yasm libreadline-dev
+sudo apt install libgvc6 graphviz-dev # for GstShark
+
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/gstreamer.git
+cd gstreamer
+git checkout kms6.6.0
+./autogen.sh
+# introspection requires python >= 2.7
+./configure --enable-introspection=no --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+
+# build openssl
+cd ${KMS_HOME}
+wget https://www.openssl.org/source/old/1.0.2/openssl-1.0.2g.tar.gz
+tar -zxvf openssl-1.0.2g.tar.gz
+cd openssl-1.0.2g
+./config shared --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+
+# build libsrtp
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/libsrtp.git
+cd libsrtp
+git checkout kms6.6.0
+./configure --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+
+# build nasm
+# required by openh264
+cd ${KMS_HOME}
+wget https://www.nasm.us/pub/nasm/releasebuilds/2.13.02/nasm-2.13.02.tar.gz
+tar -xzvf nasm-2.13.02.tar.gz
+cd nasm-2.13.02
+./configure --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+
+# build openh264
+cd ${KMS_HOME}
+git clone https://github.com/cisco/openh264.git
+cd openh264
+git checkout v1.4.0
+make && make install PREFIX=$KMS_BUILD_HOME
+if [ $? -ne 0 ]; then exit -1; fi
+
+# build usrsctp
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/usrsctp.git
+cd usrsctp
+git checkout kms6.6.0
+./bootstrap
+./configure --prefix=$KMS_BUILD_HOME
+make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+
+# build opus
+cd ${KMS_HOME}
+wget https://archive.mozilla.org/pub/opus/opus-1.2.1.tar.gz
+tar -zxvf opus-1.2.1.tar.gz
+cd opus-1.2.1
+./configure --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+
+# build orc
+cd ${KMS_HOME}
+wget https://gstreamer.freedesktop.org/src/orc/orc-0.4.28.tar.xz
+tar -Jxvf orc-0.4.28.tar.xz
+cd orc-0.4.28
+./configure --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+
+# build jsoncpp
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/jsoncpp.git
+cd jsoncpp
+git checkout kms6.6.0
+mkdir -p build && cd build
+cmake -DCMAKE_INSTALL_PREFIX=$KMS_BUILD_HOME $CMAKE_OPTS ..
+make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+# 否则编译kms-jsonrpc会报错 fatal error: json/json.h: No such file or directory
+sed -i 's/\/kmsjsoncpp//g' $KMS_BUILD_HOME/lib/pkgconfig/kmsjsoncpp.pc
+
+# gst-plugins-base
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/gst-plugins-base.git
+cd gst-plugins-base
+git checkout kms6.6.0
+./autogen.sh
+./configure --enable-introspection=no --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+
+# gst-plugins-good	
+# for rtp 
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/gst-plugins-good.git
+cd gst-plugins-good
+git checkout kms6.6.0
+./autogen.sh
+./configure --enable-introspection=no --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+
+----
+# gst-plugins-ugly
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/gst-plugins-ugly.git
+cd gst-plugins-ugly
+git checkout kms6.6.0
+./autogen.sh
+./configure --enable-introspection=no --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+
+-----
+# gst-plugins-bad
+# for openh264+libsrtp
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/gst-plugins-bad.git
+cd gst-plugins-bad
+git checkout kms6.6.0
+./autogen.sh
+./configure --enable-introspection=no --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+---
+
+# gst-libav
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/gst-libav.git
+cd gst-libav
+git checkout kms6.6.0
+./autogen.sh
+./configure --enable-introspection=no --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+--
+
+# build openwebrtc-gst-plugins
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/openwebrtc-gst-plugins.git
+cd openwebrtc-gst-plugins
+git checkout kms6.6.0
+./autogen.sh
+./configure --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+--
+
+# build libnice
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/libnice.git
+cd libnice
+git checkout kms6.6.1
+./autogen.sh
+./configure --enable-introspection=no --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+--
+
+# build libevent
+# required by kurento-media-server
+cd ${KMS_HOME}
+wget https://github.com/libevent/libevent/releases/download/release-2.0.22-stable/libevent-2.0.22-stable.tar.gz
+tar -xzvf libevent-2.0.22-stable.tar.gz
+cd libevent-2.0.22-stable
+./configure --prefix=$KMS_BUILD_HOME && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+--
+
+# build boost
+cd ${KMS_HOME}
+# boost>1.58.0不支持json配置注释
+wget "https://sourceforge.net/projects/boost/files/boost/1.58.0/boost_1_58_0.tar.gz/download" -O boost_1_58_0.tar.gz
+tar -zxvf boost_1_58_0.tar.gz
+cd boost_1_58_0
+./bootstrap.sh
+./b2 install --prefix=$KMS_BUILD_HOME
+#if [ $? -ne 0 ]; then exit -1; fi
+--
+
+# ---- build kms main ----
+# build kms-cmake-utils
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/kms-cmake-utils.git
+cd kms-cmake-utils
+git checkout 6.7.0
+mkdir -p build && cd build && cmake -DCMAKE_INSTALL_PREFIX=$KMS_BUILD_HOME $CMAKE_OPTS .. && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+--
+
+# build kurento-module-creator
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/kurento-module-creator.git
+cd kurento-module-creator
+git checkout 6.7.0
+apt install maven -y
+mvn package
+cp target/classes/FindKurentoModuleCreator.cmake ${CMAKE_MODULES_PATH}
+cp target/kurento-module-creator-jar-with-dependencies.jar ${KMS_BUILD_HOME}/bin
+cp scripts/kurento-module-creator ${KMS_BUILD_HOME}/bin
+sed -i "s|JAVA_CMD=.*|JAVA_CMD=${JAVA_CMD}|g" $KMS_BUILD_HOME/bin/kurento-module-creator
+if [ $? -ne 0 ]; then exit -1; fi
+
+# build kms-jsonrpc
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/kms-jsonrpc.git
+cd kms-jsonrpc 
+git checkout 6.7.0
+rm -rf build && mkdir -p build && cd build
+cmake -DCMAKE_INSTALL_PREFIX=$KMS_BUILD_HOME $CMAKE_OPTS ..
+make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+
+
+# build kms-core
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/kms-core.git
+cd kms-core
+git checkout 6.7.1
+rm -rf build && mkdir -p build && cd build
+apt install libsigc++-2.0-dev
+apt install libglibmm-2.4
+apt install uuid-dev
+apt install libvpx-dev
+set(CMAKE_CXX_FLAGS "-Wno-unused-local-typedefs -Wno-deprecated-declarations ${CMAKE_CXX_FLAGS}")
+cmake -DCMAKE_INSTALL_PREFIX=$KMS_BUILD_HOME $CMAKE_OPTS .. && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+--
+
+# build kms-elements
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/kms-elements.git
+cd kms-elements
+git checkout 6.7.1
+rm -rf build && mkdir -p build && cd build
+apt-get install libsoup2.4-dev
+set(CMAKE_CXX_FLAGS "-Wno-unused-local-typedefs -Wno-deprecated-declarations ${CMAKE_CXX_FLAGS}")
+cmake -DCMAKE_INSTALL_PREFIX=$KMS_BUILD_HOME $CMAKE_OPTS .. && make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+--
+
+
+# build kurento-media-server
+cd ${KMS_HOME}
+git clone https://github.com/Kurento/kurento-media-server.git
+cd kurento-media-server 
+git checkout 6.7.1
+rm -rf build && mkdir -p build && cd build
+set(CMAKE_CXX_FLAGS "-Wno-unused-local-typedefs -Wno-deprecated-declarations ${CMAKE_CXX_FLAGS}")
+cmake -DCMAKE_INSTALL_PREFIX=$KMS_BUILD_HOME $CMAKE_OPTS .. 
+make && make install
+if [ $? -ne 0 ]; then exit -1; fi
+
+
+KMS_HOME=$HOME/kms_source
+KMS_BUILD_HOME=$KMS_HOME/build/kms
+export LD_LIBRARY_PATH=$KMS_BUILD_HOME/lib:$LD_LIBRARY_PATH
+
+export GST_DEBUG="3,Kurento*:4,kms*:4" /usr/bin/kurento-media-server
+
+$KMS_BUILD_HOME/bin/kurento-media-server -f $KMS_BUILD_HOME/etc/kurento/kurento.conf.json -c $KMS_BUILD_HOME/etc/kurento/modules/kurento
